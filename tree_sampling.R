@@ -1,39 +1,52 @@
-# tree sampling based on segmentation
+# Stratified tree sampling with minimum distance
+#----------------------------------------------------
 library(rgdal)
 library(mapview)
-library(rgeos)
-library(dplyr)
-library(sampling)
 
-source("~/repositories/envimaR/R/getEnvi.R")
-p <- getEnvi("natur40/cartography/")
+# load trees (from segments_to_trees.R)
+trees <- readOGR("~/natur40/cartography/sample_trees/mof_trees.json")
 
-seg <- sapply(list.files(p$uniwald_segmentierung_2018_09_10$here,
-                         pattern = ".gpkg$", full.names = TRUE), readOGR)
+# attributes to filter:
+str(trees@data)
 
-trees <- do.call(rbind, seg)
+# define criteria
+cr1 <- trees@data$chmHeight > 15
+cr2 <- trees@data$species %in% c("BU", "EI")
 
-# remove small trees and very large ones
-hist(trees$chmHeight)
-trees <- trees[trees$chmHeight > 10 & trees$chmHeight < 40, ]
+# prefilter trees based on the defined criteria
+prefilter_trees <- trees[cr1 & cr2, ]
 
-# beech and oak information
-bu <- readOGR(paste0(p$shapes$here, "uwcWaldorte_BU.shp"))
-ei <- readOGR(paste0(p$shapes$here, "uwcWaldorte_EI.shp"))
+# sampling
+#-------------------
+# 1. stratified sampling
+# 2. minimum distance sampling
 
-abt <- gUnion(bu, ei)
-cont <- as.vector(rgeos::gContains(abt, trees, byid = TRUE))
-trees <- trees[cont,]
-trees$species <- "bu"
-trees$species[as.vector(rgeos::gContains(ei, trees, byid = TRUE))] <- "ei"
-
-# sample 50 oaks and 50 beeches
+# stratified sample of the tree age
 set.seed(1)
-s <- c(sample(which(trees$species == "ei"), 50), sample(which(trees$species == "bu"), 50))
+sample1 <- unlist(caret::createDataPartition(prefilter_trees@data$age, times = 1, p = 0.5, list = TRUE))
 
-# convert to points and visualize
-tree_points <- gCentroid(trees[s,], byid = TRUE, id = rownames(trees@data[s,]))
-tree_points <- SpatialPointsDataFrame(tree_points, trees@data[s,])
-mapView(tree_points, zcol = "species")
+trees_sample1 <- prefilter_trees[sample1,]
 
-rownames(trees)
+
+# only keep trees which are 50 m apart
+
+# source the buffer function    
+#---------------------------------------------------------
+source("~/repositories/TreeSampling/buffer_sampling.R")
+#---------------------------------------------------------
+
+coord_df <- as.data.frame(trees_sample1@coords)
+names(coord_df) <- c("x", "y")
+sample2 <- as.numeric(rownames(buffer.f(foo = coord_df, buffer = 50, reps = 1)))
+
+
+trees_sample2 <- trees_sample1[sample2,]
+
+# how many trees are left over?
+nrow(trees_sample2)
+# how many oaks and beeches?
+table(trees_sample2@data$species)
+
+# save sample
+writeOGR(trees_sample2, "~/repositories/TreeSampling/data/sample_trees.json", driver = "GeoJSON", layer = "trees_sample2")
+
