@@ -3,14 +3,18 @@
 library(rgdal)
 library(mapview)
 
+
+source("~/repositories/envimaR/R/getEnvi.R")
+p <- getEnvi("~/natur40/cartography/")
+
 # load trees (from segments_to_trees.R)
-trees <- readOGR("~/natur40/cartography/sample_trees/mof_trees.json")
+trees <- readOGR(paste0(p$sample_trees$here,"mof_trees.shp"))
 
 # attributes to filter:
 str(trees@data)
 
 # define criteria
-cr1 <- trees@data$chmHeight > 15
+cr1 <- trees@data$chmHght > 15
 cr2 <- trees@data$species %in% c("BU", "EI")
 
 # prefilter trees based on the defined criteria
@@ -47,6 +51,9 @@ nrow(trees_sample2)
 # how many oaks and beeches?
 table(trees_sample2@data$species)
 
+# how is the distribution of the aspect?
+hist(trees_sample2@data$aspect, breaks = c(seq(0,360,45)))
+
 # save sample
-writeOGR(trees_sample2, "~/repositories/TreeSampling/data/sample_trees.json", driver = "GeoJSON", layer = "trees_sample2")
+writeOGR(trees_sample2, paste0(p$sample_trees$here,"sample_trees.shp"), driver = "ESRI Shapefile", layer = "trees_sample2")
 
